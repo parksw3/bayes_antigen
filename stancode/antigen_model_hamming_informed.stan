@@ -8,25 +8,24 @@ data {
      */
      int nvirus;
      int nserum;
+     int nall; // number of all strains
      
      int<lower=1, upper=nvirus> vlevel[E];
      int<lower=1, upper=nserum> slevel[E];
      
+     int<lower=1, upper=nall> vlevel_all[nvirus];
+     int<lower=1, upper=nall> slevel_all[nserum];
+     
+     matrix[D, nall] prior_mean;
 }
 
 parameters {
-    /* the first point is fixed at the origin (0)
-     * the next D points are stored in a lower triangular matrix (X1)
-     * the remaining points are given by a N-D-1 x D matrix (X2)
-     */
-    cholesky_factor_cov[D] X1;
-    matrix[D, nvirus-D-1] X2;
+    matrix[D, nvirus] X;
     matrix[D, nserum] Y;
     real<lower=0> sigma; // residual sd
     
     vector[nvirus] JJ; // unscaled virus level effect
-    
-	vector[nserum] AA; // unscaled serum level effect
+    vector[nserum] AA; // unscaled serum level effect
 	
 	real<lower=0> sigma_J;
 	real<lower=0> sigma_A;
@@ -34,30 +33,33 @@ parameters {
 }
 
 transformed parameters {
-    // put all coordinates in a single matrix X
-    matrix[D, nvirus] X = append_col(rep_vector(0, D), append_col(X1', X2)); // [0, X1', X2]
-    
-	vector[nvirus] re_J = JJ * sigma_J;
+    vector[nvirus] re_J = JJ * sigma_J;
 	vector[nserum] re_A = AA * sigma_A;
-	
 }
 
 model {
-	JJ ~ normal(0, 1);
+	sigma_J ~ gamma(5, 5);
+	sigma_A ~ gamma(5, 5);
+	intercept ~ normal(0, 5);
+	
+    JJ ~ normal(0, 1);
     AA ~ normal(0, 1);
 	
 	sigma ~ cauchy(0, 10);
-	sigma_J ~ gamma(5, 5);
-	sigma_A ~ gamma(5, 5);
-	intercept ~ normal(10, 5);
 	
-    for (i in 1:D) {
-    	X1[i,] ~ normal(0, 100);
-    	X2[i,] ~ normal(0, 100);
-    	Y[i,] ~ normal(0, 100);
-    }
-    
-    // calculate the current distances (between the Xs)
+	for (i in 1:nvirus) {
+		for (j in 1:D) {
+			X[j,i] ~ normal(prior_mean[j,vlevel_all[i]], sqrt(0.5));
+		}
+	}
+	
+	for (i in 1:nserum) {
+		for (j in 1:D) {
+			Y[j,i] ~ normal(prior_mean[j,slevel_all[i]], sqrt(0.5));
+		}
+	}
+	
+	// calculate the current distances (between the Xs)
     for (e in 1:E) {
         real dist;
         real HHhat;
